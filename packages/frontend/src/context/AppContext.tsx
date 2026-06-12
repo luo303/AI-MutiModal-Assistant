@@ -32,6 +32,7 @@ export interface AppState {
 
 export type AppAction =
   | { type: "SESSION_READY"; sessionId: string }
+  | { type: "TURN_END_SENT" }
   | { type: "ASR_PARTIAL"; text: string }
   | { type: "ASR_FINAL"; text: string }
   | { type: "ASSISTANT_THINKING" }
@@ -69,6 +70,9 @@ function reducer(state: AppState, action: AppAction): AppState {
         asrPartial: "",
         error: null,
       };
+
+    case "TURN_END_SENT":
+      return { ...state, sessionPhase: "transcribing" };
 
     case "ASR_PARTIAL":
       return {

@@ -40,6 +40,13 @@ describe("AppContext reducer", () => {
     expect(result.current.state.connectionState).toBe("connected");
   });
 
+  it("TURN_END_SENT → 切到 transcribing（等待 ASR 结果）", () => {
+    const { result } = renderHook(() => useApp(), { wrapper: AppProvider });
+    act(() => result.current.dispatch({ type: "SESSION_READY", sessionId: "s1" }));
+    act(() => result.current.dispatch({ type: "TURN_END_SENT" }));
+    expect(result.current.state.sessionPhase).toBe("transcribing");
+  });
+
   it("ASR_PARTIAL → 更新部分识别文本 + 切到 transcribing", () => {
     const { result } = renderHook(() => useApp(), { wrapper: AppProvider });
     act(() => {

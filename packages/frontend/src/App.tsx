@@ -145,25 +145,38 @@ function AppInner() {
     };
   }, [on, off, send, dispatch]);
 
-  // ── 按下录音 ──
+  // ── 摄像头：进入 listening 时自动开启，全程预览 ──
+  const camStartedRef = useRef(false);
+  useEffect(() => {
+    if (state.sessionPhase === "listening" && !camStartedRef.current) {
+      camStartedRef.current = true;
+      cam.start().catch(() => {});
+    }
+    // 会话结束后重置标记
+    if (state.sessionPhase === "idle") {
+      camStartedRef.current = false;
+    }
+  }, [state.sessionPhase, cam.start]);
+
+  // ── 按下录音（只启停麦克风，摄像头全程开着） ──
   const handleStartRecording = useCallback(async () => {
     if (state.sessionPhase !== "listening") return;
     recordingRef.current = true;
     try {
-      await Promise.all([mic.start(), cam.start()]);
+      await mic.start();
     } catch {
-      // mic/cam 内部已处理错误
+      // mic 内部已处理错误
     }
-  }, [state.sessionPhase, mic.start, cam.start]);
+  }, [state.sessionPhase, mic.start]);
 
-  // ── 松开录音 ──
+  // ── 松开录音（停麦、切状态、发送 turn.end，摄像头继续预览） ──
   const handleStopRecording = useCallback(() => {
     recordingRef.current = false;
     mic.stop();
-    cam.stop();
+    dispatch({ type: "TURN_END_SENT" });
     const sid = sessionIdRef.current;
     if (sid) send("turn.end", { sessionId: sid });
-  }, [mic.stop, cam.stop, send]);
+  }, [mic.stop, send, dispatch]);
 
   // ── 开始会话 ──
   const handleStartSession = useCallback(() => {
