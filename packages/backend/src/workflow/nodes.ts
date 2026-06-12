@@ -1,6 +1,7 @@
 import { sessionManager } from "../session/sessionManager.js";
 import { GlmService } from "../services/glmService.js";
 import { DoubaoTtsService } from "../services/doubaoTts.js";
+import { usageRecorder } from "../services/usageRecorder.js";
 import { logger } from "../lib/logger.js";
 import type { WorkflowStateType, WorkflowUpdateType } from "./state.js";
 
@@ -143,10 +144,17 @@ export function synthesizeWithDoubaoTtsNodeFactory(deps: WorkflowDeps) {
 // ── Node 5: recordUsage ────────────────────────────
 
 /**
- * 记录本轮用量（占位，Phase 7 接入 UsageRecorder）。
+ * 记录本轮用量到 UsageRecorder。
  */
 export function recordUsageNodeFactory(_deps: WorkflowDeps) {
   return (state: WorkflowStateType): WorkflowUpdateType => {
+    usageRecorder.recordTurn(state.sessionId, {
+      asrCalls: state.asrCalls,
+      glmCalls: state.glmCalls,
+      ttsCalls: state.ttsCalls,
+      hasImage: !!state.latestFrameBase64,
+    });
+
     logger.info(MODULE, "Node: recordUsage", {
       sessionId: state.sessionId,
       asrCalls: state.asrCalls,
@@ -154,7 +162,6 @@ export function recordUsageNodeFactory(_deps: WorkflowDeps) {
       ttsCalls: state.ttsCalls,
     });
 
-    // Phase 7 接入 UsageRecorder
     return {};
   };
 }
