@@ -1,0 +1,57 @@
+﻿services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-assistant-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_assistant}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ai-assistant-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-ai_assistant}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DOUBAO_ASR_APP_ID: ${DOUBAO_ASR_APP_ID}
+      DOUBAO_ASR_ACCESS_TOKEN: ${DOUBAO_ASR_ACCESS_TOKEN}
+      DOUBAO_TTS_APP_ID: ${DOUBAO_TTS_APP_ID}
+      DOUBAO_TTS_ACCESS_TOKEN: ${DOUBAO_TTS_ACCESS_TOKEN}
+      GLM_API_KEY: ${GLM_API_KEY}
+      GLM_API_BASE_URL: ${GLM_API_BASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ai-assistant-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
