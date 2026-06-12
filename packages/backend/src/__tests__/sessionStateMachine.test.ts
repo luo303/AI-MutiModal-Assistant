@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transition, canAcceptAudio } from "./sessionStateMachine.js";
+import { transition, canAcceptAudio } from "../session/sessionStateMachine.js";
 import { SessionState } from "../types/session.js";
 
 describe("sessionStateMachine", () => {
