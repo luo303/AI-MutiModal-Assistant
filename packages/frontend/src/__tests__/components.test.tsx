@@ -47,13 +47,14 @@ describe("AppContext reducer", () => {
     expect(result.current.state.sessionPhase).toBe("transcribing");
   });
 
-  it("ASR_PARTIAL → 更新部分识别文本 + 切到 transcribing", () => {
+  it("ASR_PARTIAL → 更新部分识别文本，不改变 phase（用户可能还在说话）", () => {
     const { result } = renderHook(() => useApp(), { wrapper: AppProvider });
     act(() => {
       result.current.dispatch({ type: "ASR_PARTIAL", text: "今天" });
     });
     expect(result.current.state.asrPartial).toBe("今天");
-    expect(result.current.state.sessionPhase).toBe("transcribing");
+    // ASR_PARTIAL 只更新文本，phase 保持 idle（由 TURN_END_SENT 切换到 transcribing）
+    expect(result.current.state.sessionPhase).toBe("idle");
   });
 
   it("ASR_FINAL → 添加用户消息 + 切到 thinking", () => {

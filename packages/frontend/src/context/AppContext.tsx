@@ -75,10 +75,10 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, sessionPhase: "transcribing" };
 
     case "ASR_PARTIAL":
+      // 仅更新实时识别文本，不改变 phase（用户可能还在说话）
       return {
         ...state,
         asrPartial: action.text,
-        sessionPhase: "transcribing",
       };
 
     case "ASR_FINAL": {

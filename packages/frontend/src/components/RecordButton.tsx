@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 
 interface RecordButtonProps {
   /** 是否正在录音 */
@@ -11,42 +11,63 @@ interface RecordButtonProps {
   onStop: () => void;
 }
 
+/** 最短按压时间 (ms)：按下后在此时间内 mouseup 被忽略，防止误触 */
+const MIN_PRESS_DURATION = 200;
+
 /**
  * 按住说话按钮
  *
  * 支持 mouse 和 touch 事件。按下触发录音，松开触发停止。
- * 录音时显示脉冲动画 + "松开发送" 提示。
+ *
+ * 关键设计：
+ * 1. 使用 document 级 mouseup/touchend 检测松开（而非 onMouseLeave）
+ * 2. 最短按压时间保护，防止 React 重渲染时的误触发
+ * 3. 通过 ref 访问最新 onStop，避免闭包过期
  */
 export function RecordButton({ isRecording, disabled, onStart, onStop }: RecordButtonProps) {
   const isPressedRef = useRef(false);
+  const pressStartTimeRef = useRef(0);
+  const onStopRef = useRef(onStop);
+
+  useEffect(() => {
+    onStopRef.current = onStop;
+  });
+
+  // 在 document 级监听 mouseup/touchend，即使鼠标移出按钮也能正确松手
+  useEffect(() => {
+    const handleUp = (e: MouseEvent | TouchEvent) => {
+      if (!isPressedRef.current) return;
+
+      // 最短按压保护：忽略过于快速的 mouseup
+      const elapsed = Date.now() - pressStartTimeRef.current;
+      if (elapsed < MIN_PRESS_DURATION) {
+        console.log("[RecordButton] mouseup 被忽略（按压时间过短）", { elapsed, min: MIN_PRESS_DURATION });
+        return;
+      }
+
+      e.preventDefault();
+      isPressedRef.current = false;
+      onStopRef.current();
+    };
+
+    document.addEventListener("mouseup", handleUp);
+    document.addEventListener("touchend", handleUp);
+    return () => {
+      document.removeEventListener("mouseup", handleUp);
+      document.removeEventListener("touchend", handleUp);
+    };
+  }, []);
 
   const handleDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       e.preventDefault();
       if (disabled || isPressedRef.current) return;
       isPressedRef.current = true;
+      pressStartTimeRef.current = Date.now();
       onStart();
     },
     [disabled, onStart],
   );
-
-  const handleUp = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
-      e.preventDefault();
-      if (!isPressedRef.current) return;
-      isPressedRef.current = false;
-      onStop();
-    },
-    [onStop],
-  );
-
-  // 防止鼠标离开按钮后松开导致状态不一致
-  const handleLeave = useCallback(() => {
-    if (isPressedRef.current) {
-      isPressedRef.current = false;
-      onStop();
-    }
-  }, [onStop]);
 
   if (disabled) {
     return (
@@ -73,10 +94,7 @@ export function RecordButton({ isRecording, disabled, onStart, onStop }: RecordB
   return (
     <button
       onMouseDown={handleDown}
-      onMouseUp={handleUp}
-      onMouseLeave={handleLeave}
       onTouchStart={handleDown}
-      onTouchEnd={handleUp}
       style={{
         width: 80,
         height: 80,

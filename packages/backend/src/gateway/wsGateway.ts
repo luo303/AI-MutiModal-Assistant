@@ -91,6 +91,12 @@ class WsGateway {
       ws.on("message", async (raw) => {
         try {
           const msg = JSON.parse(raw.toString()) as ClientEvent;
+          // 所有非音频帧的消息都打 info 日志方便调试
+          if (msg.type !== "audio.chunk") {
+            logger.info(MODULE, `RECV ${msg.type}`, {
+              sessionId: (msg.payload as { sessionId?: string })?.sessionId ?? sessionId,
+            });
+          }
           if (!msg.type) {
             this.sendError(ws, sessionId, "MISSING_TYPE", "Message type is required");
             return;
@@ -111,6 +117,7 @@ class WsGateway {
             }
           }
 
+          logger.info(MODULE, `→ dispatch ${msg.type}`, { sessionId });
           await handler(ws, sessionId!, (msg.payload ?? {}) as Record<string, unknown>);
         } catch (err) {
           logger.error(MODULE, `Message handler error`, { error: err });

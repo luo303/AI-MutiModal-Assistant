@@ -68,6 +68,7 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
   }, []);
 
   const stop = useCallback(() => {
+    console.trace("[useMicrophone] stop() 被调用，调用栈如下：");
     processorRef.current?.disconnect();
     sourceRef.current?.disconnect();
     ctxRef.current?.close();
@@ -102,9 +103,10 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0); // Float32 [-1, 1]
-        const rateRatio = input.length / sampleRate; // 输入采样率 / 目标采样率 的近似
+        const rateRatio = ctx.sampleRate / sampleRate;
+        const step = Math.max(1, Math.round(rateRatio));
 
-        for (let i = 0; i < input.length; i += Math.max(1, Math.round(rateRatio))) {
+        for (let i = 0; i < input.length; i += step) {
           // Float32 → Int16
           const sample = Math.max(-1, Math.min(1, input[i]));
           bufferRef.current[bufferOffsetRef.current] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;

@@ -32,13 +32,19 @@ class ConnectionManager {
   ): void {
     const ws = this.connections.get(sessionId);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      logger.warn(MODULE, `Cannot send, connection not open`, { sessionId, event: event.type });
+      logger.warn(MODULE, `[SEND] ⚠️ 无法发送，连接未就绪`, {
+        sessionId,
+        event: event.type,
+        hasWs: !!ws,
+        readyState: ws?.readyState,
+      });
       return;
     }
     try {
       ws.send(JSON.stringify(event));
+      logger.info(MODULE, `[SEND] → ${event.type}`, { sessionId });
     } catch (err) {
-      logger.error(MODULE, `Failed to send event`, { sessionId, event: event.type, error: err });
+      logger.error(MODULE, `[SEND] ❌ 发送失败`, { sessionId, event: event.type, error: err });
     }
   }
 
