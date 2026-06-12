@@ -8,6 +8,10 @@ import { wsGateway } from "./gateway/wsGateway.js";
 import { connectionManager } from "./gateway/connectionManager.js";
 import { sessionManager } from "./session/sessionManager.js";
 import { doubaoAsr } from "./services/doubaoAsr.js";
+import { glmService } from "./services/glmService.js";
+import { doubaoTts } from "./services/doubaoTts.js";
+import { usageRecorder } from "./services/usageRecorder.js";
+import { createMvpGraph } from "./workflow/graph.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import healthRouter from "./routes/health.js";
 
@@ -92,13 +96,82 @@ wsGateway.setHandler("turn.end", async (_ws, sessionId, _payload) => {
     payload: { sessionId, text: finalText },
   });
 
-  // TODO Phase 6: 触发 LangGraph workflow
+  // ── 触发 LangGraph 工作流 ─────────────────────────
   connectionManager.sendToSession(sessionId, {
     type: "assistant.thinking",
     payload: { sessionId },
   });
 
-  logger.info(MODULE, `ASR turn complete`, { sessionId, text: finalText.slice(0, 50) });
+  try {
+    const graph = createMvpGraph({ glmService, ttsService: doubaoTts });
+    const result = await graph.invoke({
+      sessionId,
+      userText: finalText,
+    });
+
+    // 推送 AI 文本
+    if (result.assistantText) {
+      connectionManager.sendToSession(sessionId, {
+        type: "assistant.text",
+        payload: { sessionId, text: result.assistantText },
+      });
+    }
+
+    // 推送 AI 语音
+    if (result.assistantAudio) {
+      connectionManager.sendToSession(sessionId, {
+        type: "assistant.audio",
+        payload: {
+          sessionId,
+          data: result.assistantAudio.toString("base64"),
+        },
+      });
+    }
+
+    // 推送用量
+    const usagePayload = usageRecorder.toPayload(sessionId);
+    if (usagePayload) {
+      connectionManager.sendToSession(sessionId, {
+        type: "usage.update",
+        payload: usagePayload,
+      });
+    }
+
+    // 推送工作流内部错误（如 GLM 失败但未抛异常）
+    if (result.error) {
+      connectionManager.sendToSession(sessionId, {
+        type: "error",
+        payload: {
+          sessionId,
+          code: "WORKFLOW_ERROR",
+          message: result.error,
+        },
+      });
+    }
+  } catch (err) {
+    logger.error(MODULE, "Workflow failed", {
+      sessionId,
+      error: (err as Error).message,
+    });
+    connectionManager.sendToSession(sessionId, {
+      type: "error",
+      payload: {
+        sessionId,
+        code: "WORKFLOW_ERROR",
+        message: err instanceof Error ? err.message : String(err),
+      },
+    });
+  } finally {
+    connectionManager.sendToSession(sessionId, {
+      type: "assistant.done",
+      payload: { sessionId },
+    });
+  }
+
+  logger.info(MODULE, "Turn complete", {
+    sessionId,
+    text: finalText.slice(0, 50),
+  });
 });
 
 // ── 错误处理（必须放在最后） ──────────────────────────
