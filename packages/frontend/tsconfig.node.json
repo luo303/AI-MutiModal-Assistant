@@ -1,11 +1,12 @@
 ﻿{
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "composite": true,
     "lib": ["ES2023"],
     "outDir": "dist",
     "rootDir": ".",
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "emitDeclarationOnly": true
   },
   "include": ["vite.config.ts"]
 }
