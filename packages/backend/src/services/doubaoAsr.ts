@@ -64,6 +64,10 @@ interface AsrSession {
  */
 export class DoubaoAsrService {
   private sessions = new Map<string, AsrSession>();
+  /** 正在建立中的 session，防止并发的 audio.chunk 触发重复连接 */
+  private pendingSessions = new Set<string>();
+  /** 连接建立前到达的 chunk 缓冲区 */
+  private pendingChunks = new Map<string, Buffer[]>();
 
   /**
    * 开始识别——建立 WebSocket 连接并发送 Full Client Request
@@ -71,12 +75,16 @@ export class DoubaoAsrService {
   startRecognition(sessionId: string, callbacks: AsrCallbacks): Promise<void> {
     logger.info(MODULE, `Starting ASR recognition`, { sessionId });
 
+    // 防止竞态：立即标记为 pending
+    this.pendingSessions.add(sessionId);
+
     return new Promise((resolve, reject) => {
       let settled = false;
 
       const finishConnect = () => {
         if (settled) return;
         settled = true;
+        this.pendingSessions.delete(sessionId);
         if (connectTimeout) clearTimeout(connectTimeout);
         resolve();
       };
@@ -84,6 +92,7 @@ export class DoubaoAsrService {
       const failConnect = (err: Error) => {
         if (settled) return;
         settled = true;
+        this.pendingSessions.delete(sessionId);
         if (connectTimeout) clearTimeout(connectTimeout);
         reject(err);
       };
@@ -123,6 +132,22 @@ export class DoubaoAsrService {
         this.sessions.set(sessionId, session);
         this.sendFullClientRequest(session);
         logger.info(MODULE, `ASR connected`, { sessionId });
+
+        // flush 连接建立前缓冲的音频 chunks
+        const buffered = this.pendingChunks.get(sessionId);
+        if (buffered && buffered.length > 0) {
+          logger.info(MODULE, `Flushing buffered audio chunks`, {
+            sessionId,
+            count: buffered.length,
+          });
+          for (const c of buffered) {
+            session.seqNo++;
+            const h = buildHeader(MSG_AUDIO_ONLY, FLAG_POS_SEQ, SERIAL_RAW, COMPRESS_NONE);
+            session.ws.send(buildFrame(h, c, session.seqNo));
+          }
+          this.pendingChunks.delete(sessionId);
+        }
+
         finishConnect();
       });
 
@@ -166,6 +191,15 @@ export class DoubaoAsrService {
    * @param chunk - 16kHz 16bit mono PCM 数据
    */
   sendAudioChunk(sessionId: string, chunk: Buffer): void {
+    // 连接尚未建立时，缓冲 chunk，等 open 后 flush
+    if (this.pendingSessions.has(sessionId)) {
+      if (!this.pendingChunks.has(sessionId)) {
+        this.pendingChunks.set(sessionId, []);
+      }
+      this.pendingChunks.get(sessionId)!.push(chunk);
+      return;
+    }
+
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new AsrError(`No ASR session found: ${sessionId}`);
@@ -212,9 +246,9 @@ export class DoubaoAsrService {
     return session.resultPromise;
   }
 
-  /** 检查指定 session 是否已有活跃的 ASR 连接 */
+  /** 检查指定 session 是否已有活跃或正在建立的 ASR 连接 */
   hasActiveSession(sessionId: string): boolean {
-    return this.sessions.has(sessionId);
+    return this.sessions.has(sessionId) || this.pendingSessions.has(sessionId);
   }
 
   /** 主动关闭指定 session 的 ASR 连接 */
@@ -265,18 +299,34 @@ export class DoubaoAsrService {
       return;
     }
 
-    if (frame.msgType !== MSG_SERVER_RESPONSE) return;
-
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(extractJsonPayload(frame));
-    } catch {
-      logger.warn(MODULE, `Non-JSON ASR response`, {
+    if (frame.msgType !== MSG_SERVER_RESPONSE) {
+      logger.debug(MODULE, `ASR non-response frame`, {
         sessionId: session.sessionId,
-        raw: extractJsonPayload(frame).slice(0, 200),
+        msgType: frame.msgType,
+        flags: frame.flags,
       });
       return;
     }
+
+    const rawPayload = extractJsonPayload(frame);
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(rawPayload);
+    } catch {
+      logger.warn(MODULE, `Non-JSON ASR response`, {
+        sessionId: session.sessionId,
+        raw: rawPayload.slice(0, 200),
+      });
+      return;
+    }
+
+    // DEBUG: 打印所有服务端返回
+    logger.info(MODULE, `ASR response`, {
+      sessionId: session.sessionId,
+      flags: frame.flags,
+      hasResult: !!(parsed.payload_msg as Record<string, unknown>)?.result,
+      payload: rawPayload.slice(0, 300),
+    });
 
     this.processResult(session, parsed, frame.flags);
   }
@@ -287,15 +337,15 @@ export class DoubaoAsrService {
     result: Record<string, unknown>,
     flags: number,
   ): void {
-    // 火山引擎返回结构: { payload_msg: { result: [{ text, is_final, ... }] } }
-    const payloadMsg = result.payload_msg as Record<string, unknown> | undefined;
-    const utterances = (payloadMsg?.result ?? []) as Array<Record<string, unknown>>;
+    // 豆包 bigmodel 返回结构: { result: { text, utterances: [{ text, definite, ... }] } }
+    const resultBlock = result.result as Record<string, unknown> | undefined;
+    const utterances = (resultBlock?.utterances ?? []) as Array<Record<string, unknown>>;
 
     for (const utt of utterances) {
       const uttText = (utt.text as string) ?? "";
-      const isFinal = Boolean(utt.is_final);
+      const isDefinite = Boolean(utt.definite); // 豆包用 definite 而非 is_final
 
-      if (isFinal) {
+      if (isDefinite) {
         session.accumulatedText += uttText;
       } else {
         session.partialText = uttText;
@@ -303,7 +353,7 @@ export class DoubaoAsrService {
       }
     }
 
-    // 负包 flags 表示这是最后一帧 → 最终结果
+    // 负包 flags (0b0011 = 3) 表示这是最后一帧 → 最终结果
     const isLastPacket = flags === FLAG_NEG_SEQ;
 
     if (isLastPacket && session.resolveResult) {
@@ -324,7 +374,6 @@ export class DoubaoAsrService {
         session.resolveResult(finalText);
       }
 
-      // 清理
       session.resolveResult = null;
       session.rejectResult = null;
       session.ws.close();
@@ -339,6 +388,8 @@ export class DoubaoAsrService {
       if (session.resultTimeout) clearTimeout(session.resultTimeout);
     }
     this.sessions.delete(sessionId);
+    this.pendingSessions.delete(sessionId);
+    this.pendingChunks.delete(sessionId);
   }
 }
 

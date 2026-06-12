@@ -84,6 +84,11 @@ wsGateway.setHandler("turn.end", async (_ws, sessionId, _payload) => {
       type: "error",
       payload: { sessionId, code: "ASR_ERROR", message: String(err) },
     });
+    // ASR 失败也要通知前端本轮结束，防止卡死
+    connectionManager.sendToSession(sessionId, {
+      type: "assistant.done",
+      payload: { sessionId },
+    });
     return;
   }
 

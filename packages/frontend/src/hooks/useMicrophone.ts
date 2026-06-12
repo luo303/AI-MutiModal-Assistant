@@ -102,9 +102,17 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0); // Float32 [-1, 1]
-        const rateRatio = input.length / sampleRate; // 输入采样率 / 目标采样率 的近似
+        // ctx.sampleRate 是浏览器实际采样率（通常 44100/48000），sampleRate 是目标 16000
+        const rateRatio = ctx.sampleRate / sampleRate;
+        const step = Math.max(1, Math.round(rateRatio));
 
-        for (let i = 0; i < input.length; i += Math.max(1, Math.round(rateRatio))) {
+        // 一次性输出调试信息
+        if (!(ctx as unknown as Record<string, boolean>)._debugged) {
+          (ctx as unknown as Record<string, boolean>)._debugged = true;
+          console.log(`[useMicrophone] 实际采样率=${ctx.sampleRate}Hz, 目标=${sampleRate}Hz, step=${step}`);
+        }
+
+        for (let i = 0; i < input.length; i += step) {
           // Float32 → Int16
           const sample = Math.max(-1, Math.min(1, input[i]));
           bufferRef.current[bufferOffsetRef.current] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;

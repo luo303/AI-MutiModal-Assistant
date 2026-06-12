@@ -158,6 +158,24 @@ function AppInner() {
     }
   }, [state.sessionPhase, cam.start]);
 
+  // ── 超时保护：transcribing/thinking 超过 30s 没响应就自动恢复 ──
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const isWaiting = state.sessionPhase === "transcribing" || state.sessionPhase === "thinking";
+    if (isWaiting) {
+      timeoutRef.current = setTimeout(() => {
+        dispatch({ type: "SET_ERROR", message: "服务端响应超时，请重试" });
+        dispatch({ type: "BACK_TO_LISTENING" });
+      }, 30_000);
+    }
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [state.sessionPhase, dispatch]);
+
   // ── 按下录音（只启停麦克风，摄像头全程开着） ──
   const handleStartRecording = useCallback(async () => {
     if (state.sessionPhase !== "listening") return;
