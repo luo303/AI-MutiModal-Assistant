@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "backend",
   "version": "0.1.0",
   "private": true,
@@ -7,19 +7,24 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "ws": "^8.18.2"
+    "ws": "^8.18.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.2",
     "@types/node": "^22.15.3",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.8",
     "tsx": "^4.19.4",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "vitest": "^4.1.8"
   }
 }
