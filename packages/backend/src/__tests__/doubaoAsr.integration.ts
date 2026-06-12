@@ -9,15 +9,15 @@
  *
  * 用法：
  *   # 默认：自动生成合成语音测试
- *   npx tsx src/services/doubaoAsr.integration.ts
+ *   npx tsx src/__tests__/doubaoAsr.integration.ts
  *
  *   # 使用真实 WAV 录音（推荐，16kHz 16bit mono PCM）
- *   npx tsx src/services/doubaoAsr.integration.ts ./test-audio.wav
+ *   npx tsx src/__tests__/doubaoAsr.integration.ts ./test-audio.wav
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { Buffer } from "node:buffer";
-import { DoubaoAsrService } from "./doubaoAsr.js";
+import { DoubaoAsrService } from "../services/doubaoAsr.js";
 
 const SERVICE = new DoubaoAsrService();
 const TEST_SESSION = "test-session-001";
