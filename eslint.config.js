@@ -17,6 +17,14 @@ export default tseslint.config(
   // ── 基础 JS / TS 规则（全包生效） ─────────────────────────
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
 
   // ── 前端 (React + Vite) ───────────────────────────────────
   {
