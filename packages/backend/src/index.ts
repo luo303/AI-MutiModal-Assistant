@@ -156,6 +156,8 @@ wsGateway.setHandler("turn.end", async (_ws, sessionId, _payload) => {
 
     // 推送 AI 语音
     if (result.assistantAudio) {
+      // 更新状态机：thinking → speaking（必须在发送 assistant.audio 之前）
+      sessionManager.recordAssistantAudio(sessionId);
       logger.info(MODULE, `[turn.end] 推送 assistant.audio`, {
         sessionId,
         audioBytes: result.assistantAudio.length,
