@@ -320,14 +320,6 @@ export class DoubaoAsrService {
       return;
     }
 
-    // DEBUG: 打印所有服务端返回
-    logger.info(MODULE, `ASR response`, {
-      sessionId: session.sessionId,
-      flags: frame.flags,
-      hasResult: !!(parsed.payload_msg as Record<string, unknown>)?.result,
-      payload: rawPayload.slice(0, 300),
-    });
-
     this.processResult(session, parsed, frame.flags);
   }
 

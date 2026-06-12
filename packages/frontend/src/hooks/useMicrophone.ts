@@ -68,6 +68,7 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
   }, []);
 
   const stop = useCallback(() => {
+    console.trace("[useMicrophone] stop() 被调用，调用栈如下：");
     processorRef.current?.disconnect();
     sourceRef.current?.disconnect();
     ctxRef.current?.close();
@@ -102,15 +103,8 @@ export function useMicrophone(options: UseMicrophoneOptions = {}): UseMicrophone
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0); // Float32 [-1, 1]
-        // ctx.sampleRate 是浏览器实际采样率（通常 44100/48000），sampleRate 是目标 16000
         const rateRatio = ctx.sampleRate / sampleRate;
         const step = Math.max(1, Math.round(rateRatio));
-
-        // 一次性输出调试信息
-        if (!(ctx as unknown as Record<string, boolean>)._debugged) {
-          (ctx as unknown as Record<string, boolean>)._debugged = true;
-          console.log(`[useMicrophone] 实际采样率=${ctx.sampleRate}Hz, 目标=${sampleRate}Hz, step=${step}`);
-        }
 
         for (let i = 0; i < input.length; i += step) {
           // Float32 → Int16

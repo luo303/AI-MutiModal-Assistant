@@ -158,6 +158,15 @@ function AppInner() {
     }
   }, [state.sessionPhase, cam.start]);
 
+  // ── 调试：监控所有 phase 变化 ──
+  useEffect(() => {
+    console.log("[App] 🔄 phase 变化 →", state.sessionPhase, {
+      sessionId: state.sessionId,
+      messagesCount: state.messages.length,
+      error: state.error,
+    });
+  }, [state.sessionPhase, state.sessionId, state.messages.length, state.error]);
+
   // ── 超时保护：transcribing/thinking 超过 30s 没响应就自动恢复 ──
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -176,24 +185,50 @@ function AppInner() {
     };
   }, [state.sessionPhase, dispatch]);
 
+  // 用 ref 访问最新 phase/readyState，避免 handleStartRecording/handleStopRecording 因 deps 变化重建
+  const phaseForCallbackRef = useRef(state.sessionPhase);
+  useEffect(() => { phaseForCallbackRef.current = state.sessionPhase; }, [state.sessionPhase]);
+  const readyStateRef = useRef(readyState);
+  useEffect(() => { readyStateRef.current = readyState; }, [readyState]);
+
   // ── 按下录音（只启停麦克风，摄像头全程开着） ──
   const handleStartRecording = useCallback(async () => {
-    if (state.sessionPhase !== "listening") return;
+    console.log("[App] handleStartRecording 触发", { phase: phaseForCallbackRef.current });
+    if (phaseForCallbackRef.current !== "listening") {
+      console.warn("[App] 忽略录音开始：phase 不是 listening", phaseForCallbackRef.current);
+      return;
+    }
     recordingRef.current = true;
     try {
       await mic.start();
-    } catch {
-      // mic 内部已处理错误
+      console.log("[App] 麦克风已启动", { isRecording: mic.isRecording });
+    } catch (err) {
+      console.error("[App] 麦克风启动失败", err);
+      recordingRef.current = false;
     }
-  }, [state.sessionPhase, mic.start]);
+  }, [mic.start]);
 
   // ── 松开录音（停麦、切状态、发送 turn.end，摄像头继续预览） ──
   const handleStopRecording = useCallback(() => {
+    console.log("[App] handleStopRecording 触发", {
+      phase: phaseForCallbackRef.current,
+      sessionId: sessionIdRef.current,
+      wsReadyState: readyStateRef.current,
+    });
+    if (!recordingRef.current) {
+      console.warn("[App] ⚠️ handleStopRecording 被调用但 recordingRef 已是 false，跳过");
+      return;
+    }
     recordingRef.current = false;
     mic.stop();
     dispatch({ type: "TURN_END_SENT" });
     const sid = sessionIdRef.current;
-    if (sid) send("turn.end", { sessionId: sid });
+    if (sid) {
+      console.log("[App] 发送 turn.end", { sessionId: sid });
+      send("turn.end", { sessionId: sid });
+    } else {
+      console.warn("[App] ⚠️ 无法发送 turn.end：sessionId 为空");
+    }
   }, [mic.stop, send, dispatch]);
 
   // ── 开始会话 ──

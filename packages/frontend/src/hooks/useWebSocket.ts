@@ -78,11 +78,13 @@ export function useWebSocket(
     setReadyState(WebSocket.CONNECTING);
 
     ws.onopen = () => {
+      console.log("[useWebSocket] 连接已建立", url);
       setReadyState(WebSocket.OPEN);
       reconnectCountRef.current = 0;
     };
 
     ws.onclose = () => {
+      console.log("[useWebSocket] 连接已关闭", url);
       setReadyState(WebSocket.CLOSED);
 
       // 非手动关闭且重连未达上限，则自动重连
@@ -104,6 +106,7 @@ export function useWebSocket(
     ws.onmessage = (event: MessageEvent) => {
       try {
         const msg = JSON.parse(event.data as string) as ServerEvent;
+        console.log("[useWebSocket] RECV", msg.type, msg.payload);
         setLastMessage(msg);
 
         // 通知所有订阅该类型的 listener
@@ -112,7 +115,7 @@ export function useWebSocket(
           typeListeners.forEach((fn) => fn(msg.payload));
         }
       } catch {
-        // 忽略解析失败的消息
+        console.warn("[useWebSocket] 收到非JSON消息，已忽略");
       }
     };
   }, [url, reconnectInterval, maxReconnectAttempts]);
@@ -124,8 +127,16 @@ export function useWebSocket(
 
   /** 发送消息 */
   const send = useCallback(<T extends ClientEventType>(type: T, payload: ClientEvent["payload"]) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type, payload }));
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type, payload }));
+      console.log("[useWebSocket] SEND", type, payload);
+    } else {
+      console.warn("[useWebSocket] ⚠️ 消息被丢弃(ws未OPEN)", {
+        type,
+        readyState: ws?.readyState ?? "null",
+        readyStateLabel: ws ? ["CONNECTING", "OPEN", "CLOSING", "CLOSED"][ws.readyState] : "no-websocket",
+      });
     }
   }, []);
 
